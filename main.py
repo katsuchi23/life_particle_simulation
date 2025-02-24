@@ -11,7 +11,7 @@ CONTROL_WIDTH = 200
 TOTAL_WIDTH = PLAYGROUND_WIDTH + CONTROL_WIDTH
 DRAW_INTERVAL = 1       # Draw every simulation step
 FPS = 60               # Frames per second
-GRAVITY = 0.1          # Gravity constant
+GRAVITY = 0.05          # Gravity constant
 
 # --- Initial Settings for Atom Types ---
 # For each type, we store:
@@ -20,20 +20,18 @@ GRAVITY = 0.1          # Gravity constant
 #   - num_particles: how many particles of that type.
 #   - radius: drawing radius (and collision diameter = 2*radius).
 INITIAL_ATOM_SETTINGS = [
-    {"name": "red",    "color": (255, 0, 0),   "num_particles": 2000, "radius": 3.0},
+    {"name": "red",    "color": (255, 0, 0),   "num_particles": 5000, "radius": 3.0},
     {"name": "white", "color": (255, 255, 255), "num_particles": 2000, "radius": 3.0},
-    {"name": "blue",   "color": (0, 0, 255),   "num_particles": 2000, "radius": 3.0},
-    {"name": "green",  "color": (0, 255, 0),   "num_particles": 2000, "radius": 3.0},
+    {"name": "blue", "color": 'blue', "num_particles": 0, "radius": 3.0}
 ]
 NUM_TYPES = len(INITIAL_ATOM_SETTINGS)
 
 # --- Initial Force Matrix ---
 # This is a NUM_TYPES x NUM_TYPES matrix.
 INITIAL_FORCE_MATRIX = np.array([
-    [1,  1,  1,  1],
-    [1,  1,  1,  1],
-    [1,  1,  1,  1],
-    [1,  1,  1,  1]
+    [-0.1,  1, -1],
+    [-1,  1, -1],
+    [-1,  1, 1],
 ], dtype=np.float32)
 
 
