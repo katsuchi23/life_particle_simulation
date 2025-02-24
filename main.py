@@ -11,7 +11,7 @@ CONTROL_WIDTH = 200
 TOTAL_WIDTH = PLAYGROUND_WIDTH + CONTROL_WIDTH
 DRAW_INTERVAL = 1       # Draw every simulation step
 FPS = 60               # Frames per second
-GRAVITY = 1          # Gravity constant
+GRAVITY = 0.1          # Gravity constant
 
 # --- Initial Settings for Atom Types ---
 # For each type, we store:
@@ -30,10 +30,10 @@ NUM_TYPES = len(INITIAL_ATOM_SETTINGS)
 # --- Initial Force Matrix ---
 # This is a NUM_TYPES x NUM_TYPES matrix.
 INITIAL_FORCE_MATRIX = np.array([
-    [1,   -1,  0.1,  0.0],
-    [1,    0,  0.0,  0.1],
-    [0.1,  0.0, 0.5, -0.2],
-    [0.0,  0.1, -0.2,  0.5]
+    [1,  1,  1,  1],
+    [1,  1,  1,  1],
+    [1,  1,  1,  1],
+    [1,  1,  1,  1]
 ], dtype=np.float32)
 
 
