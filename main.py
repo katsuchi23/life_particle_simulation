@@ -5,10 +5,11 @@ import math
 import pygame_gui
 import time
 import json
+import os
 
 # -- SIMULATION PARAMETERS --
-PLAYGROUND_WIDTH = 1000
-Y_SIZE = 1000
+PLAYGROUND_WIDTH = 1200
+Y_SIZE = 1200
 CONTROL_WIDTH = 200
 TOTAL_WIDTH = PLAYGROUND_WIDTH + CONTROL_WIDTH
 DRAW_INTERVAL = 1       # Draw every simulation step
@@ -22,10 +23,10 @@ GRAVITY = 0.5          # Gravity constant
 #   - num_particles: how many particles of that type.
 #   - radius: drawing radius (and collision diameter = 2*radius).
 INITIAL_ATOM_SETTINGS = [
-    {"name": "red",    "color": (255, 0, 0),   "num_particles": 5000, "radius": 3.0},
-    {"name": "white",  "color": (255, 255, 255), "num_particles": 1000, "radius": 3.0},
-    {"name": "blue",   "color": 'blue',          "num_particles": 1000, "radius": 3.0},
-    {"name": "green",  "color": 'green',         "num_particles": 1000, "radius": 3.0},
+    {"name": "red",    "color": (255, 0, 0),   "num_particles": 2000, "radius": 3.0},
+    {"name": "white",  "color": (255, 255, 255), "num_particles": 2000, "radius": 3.0},
+    {"name": "blue",   "color": 'blue',          "num_particles": 2000, "radius": 3.0},
+    {"name": "orange", "color": 'orange',        "num_particles": 2000, "radius": 3.0},
 ]
 NUM_TYPES = len(INITIAL_ATOM_SETTINGS)
 
@@ -138,153 +139,204 @@ void resolve_collisions_kernel(float* positions, float* velocities,
         self.force_matrix = cp.array((self.force_params * self.gravity).flatten())
 
     def _create_ui_panel(self):
-        """Create a scrolling control panel in the control area."""
+        """Create a scrolling control panel in the control area with a calculated scrollable area
+        tall enough so that even the filename textbox and Save button are fully visible."""
         panel_rect = pygame.Rect(PLAYGROUND_WIDTH + 10, 10, CONTROL_WIDTH - 20, Y_SIZE - 20)
         
-        # Calculate total height needed for all UI elements to set proper scrollable height
         element_height = 30
         padding = 5
         total_height = 0
         
-        # Add height for FPS and Gravity controls
-        simulation_params_height = (element_height + padding) * 3  # Title + FPS + Gravity
+        # Simulation parameters section (Title, FPS, Gravity)
+        simulation_params_height = (element_height + padding) * 3
+        total_height += simulation_params_height
         
-        # Base height for atom type settings
-        atom_section_height = (element_height + padding) * 3  # Title + count + radius
+        # Atom type settings (for each atom, add Title, Count, Radius + extra padding)
+        atom_section_height = (element_height + padding) * 3
         for _ in self.atom_params:
             total_height += atom_section_height + padding
-            
-        # Height for force matrix
+        
+        # Force matrix controls.
         force_title_height = element_height + padding
         force_row_height = element_height + padding
         force_cell_height = (element_height + padding) * NUM_TYPES
         force_matrix_height = force_title_height + (force_row_height + force_cell_height) * NUM_TYPES + padding
+        total_height += force_matrix_height
         
-        # Button height (now we have three buttons)
-        button_height = 40 + padding * 2
+        # Bottom section: Refresh button, Randomize button, File Name label, File Name textbox, and Save button.
+        button_height = 40 + padding * 2  # Each button is 40 high plus padding (i.e. 50)
+        # Two buttons (Refresh and Randomize) + one Save button = 3 * button_height
+        # Plus two extra UI elements (File Name label and textbox), each using (element_height + padding)
+        bottom_section_height = 3 * button_height + 2 * (element_height + padding)
+        total_height += bottom_section_height
         
-        total_height += simulation_params_height + force_matrix_height + 3 * button_height
-        
-        # Make sure there's enough content to force scrolling
+        # Ensure the scrollable area is tall enough.
         scrollable_height = max(total_height, Y_SIZE - 20)
         
-        # Use a scrolling container with the calculated height
         self.ui_panel = pygame_gui.elements.UIScrollingContainer(
             relative_rect=panel_rect,
             manager=self.ui_manager
         )
-        
-        # Set the scrollable area height
         self.ui_panel.set_scrollable_area_dimensions((panel_rect.width - 20, scrollable_height))
         
         self.ui_elements = {}
         container_width = self.ui_panel.get_container().get_size()[0]
         y_offset = 10
         
-        # Add simulation parameters section (FPS and Gravity)
-        sim_title = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
-                                                  text="Simulation Settings:",
-                                                  manager=self.ui_manager,
-                                                  container=self.ui_panel.get_container())
+        # Simulation Settings Section.
+        sim_title = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
+            text="Simulation Settings:",
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
         y_offset += element_height + padding
         
-        fps_label = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, 60, element_height),
-                                               text="FPS:",
-                                               manager=self.ui_manager,
-                                               container=self.ui_panel.get_container())
-        fps_entry = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(80, y_offset, container_width - 90, element_height),
-                                                       manager=self.ui_manager,
-                                                       container=self.ui_panel.get_container())
+        fps_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(10, y_offset, 60, element_height),
+            text="FPS:",
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
+        fps_entry = pygame_gui.elements.UITextEntryLine(
+            relative_rect=pygame.Rect(80, y_offset, container_width - 90, element_height),
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
         fps_entry.set_text(str(self.fps))
         y_offset += element_height + padding
         
-        gravity_label = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, 60, element_height),
-                                                   text="Gravity:",
-                                                   manager=self.ui_manager,
-                                                   container=self.ui_panel.get_container())
-        gravity_entry = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(80, y_offset, container_width - 90, element_height),
-                                                           manager=self.ui_manager,
-                                                           container=self.ui_panel.get_container())
+        gravity_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(10, y_offset, 60, element_height),
+            text="Gravity:",
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
+        gravity_entry = pygame_gui.elements.UITextEntryLine(
+            relative_rect=pygame.Rect(80, y_offset, container_width - 90, element_height),
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
         gravity_entry.set_text(str(self.gravity))
         y_offset += element_height + padding
         
-        # Store the UI elements for FPS and gravity
         self.ui_elements["fps"] = fps_entry
         self.ui_elements["gravity"] = gravity_entry
         
-        # For each atom type, add UI elements.
+        # Atom type UI elements.
         for i, atom in enumerate(self.atom_params):
-            title = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
-                                                  text=f"{atom['name'].capitalize()} Settings:",
-                                                  manager=self.ui_manager,
-                                                  container=self.ui_panel.get_container())
+            title = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
+                text=f"{atom['name'].capitalize()} Settings:",
+                manager=self.ui_manager,
+                container=self.ui_panel.get_container()
+            )
             y_offset += element_height + padding
             
-            np_label = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, 60, element_height),
-                                                   text="Count:",
-                                                   manager=self.ui_manager,
-                                                   container=self.ui_panel.get_container())
-            np_entry = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(80, y_offset, container_width - 90, element_height),
-                                                           manager=self.ui_manager,
-                                                           container=self.ui_panel.get_container())
+            np_label = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(10, y_offset, 60, element_height),
+                text="Count:",
+                manager=self.ui_manager,
+                container=self.ui_panel.get_container()
+            )
+            np_entry = pygame_gui.elements.UITextEntryLine(
+                relative_rect=pygame.Rect(80, y_offset, container_width - 90, element_height),
+                manager=self.ui_manager,
+                container=self.ui_panel.get_container()
+            )
             np_entry.set_text(str(atom["num_particles"]))
             y_offset += element_height + padding
             
-            r_label = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, 60, element_height),
-                                                  text="Radius:",
-                                                  manager=self.ui_manager,
-                                                  container=self.ui_panel.get_container())
-            r_entry = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(80, y_offset, container_width - 90, element_height),
-                                                          manager=self.ui_manager,
-                                                          container=self.ui_panel.get_container())
+            r_label = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(10, y_offset, 60, element_height),
+                text="Radius:",
+                manager=self.ui_manager,
+                container=self.ui_panel.get_container()
+            )
+            r_entry = pygame_gui.elements.UITextEntryLine(
+                relative_rect=pygame.Rect(80, y_offset, container_width - 90, element_height),
+                manager=self.ui_manager,
+                container=self.ui_panel.get_container()
+            )
             r_entry.set_text(str(atom["radius"]))
             y_offset += element_height + padding
             
             self.ui_elements[i] = {"num_particles": np_entry, "radius": r_entry, "forces": {}}
         
-        # Add force matrix controls.
-        force_title = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
-                                                  text="Force (row->col):",
-                                                  manager=self.ui_manager,
-                                                  container=self.ui_panel.get_container())
+        # Force matrix controls.
+        force_title = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
+            text="Force (row->col):",
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
         y_offset += element_height + padding
         
         for i in range(NUM_TYPES):
-            row_label = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
-                                                    text=f"{self.atom_params[i]['name']} forces:",
-                                                    manager=self.ui_manager,
-                                                    container=self.ui_panel.get_container())
+            row_label = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
+                text=f"{self.atom_params[i]['name']} forces:",
+                manager=self.ui_manager,
+                container=self.ui_panel.get_container()
+            )
             y_offset += element_height + padding
             for j in range(NUM_TYPES):
-                f_label = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, 80, element_height),
-                                                      text=f"to {self.atom_params[j]['name']}:",
-                                                      manager=self.ui_manager,
-                                                      container=self.ui_panel.get_container())
-                f_entry = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(100, y_offset, container_width - 110, element_height),
-                                                              manager=self.ui_manager,
-                                                              container=self.ui_panel.get_container())
+                f_label = pygame_gui.elements.UILabel(
+                    relative_rect=pygame.Rect(10, y_offset, 80, element_height),
+                    text=f"to {self.atom_params[j]['name']}:",
+                    manager=self.ui_manager,
+                    container=self.ui_panel.get_container()
+                )
+                f_entry = pygame_gui.elements.UITextEntryLine(
+                    relative_rect=pygame.Rect(100, y_offset, container_width - 110, element_height),
+                    manager=self.ui_manager,
+                    container=self.ui_panel.get_container()
+                )
                 f_entry.set_text(str(self.force_params[i][j]))
                 self.ui_elements[i]["forces"][j] = f_entry
                 y_offset += element_height + padding
             y_offset += padding
-
-        # Add three buttons: Update Simulation, Random Force Matrix, and Save Force Matrix.
-        self.update_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
-                                                            text="Refresh",
-                                                            manager=self.ui_manager,
-                                                            container=self.ui_panel.get_container())
+        
+        # Bottom section: Refresh and Randomize buttons, File Name label and textbox, then Save button.
+        self.update_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
+            text="Refresh",
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
         y_offset += 50
         
-        self.random_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
-                                                            text="Randomize",
-                                                            manager=self.ui_manager,
-                                                            container=self.ui_panel.get_container())
+        self.random_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
+            text="Randomize",
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
         y_offset += 50
         
-        self.save_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
-                                                          text="Save",
-                                                          manager=self.ui_manager,
-                                                          container=self.ui_panel.get_container())
+        file_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
+            text="File Name:",
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
+        y_offset += element_height + padding
+        
+        self.filename_entry = pygame_gui.elements.UITextEntryLine(
+            relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
+        self.filename_entry.set_text("")
+        self.ui_elements["filename"] = self.filename_entry
+        y_offset += element_height + padding
+        
+        self.save_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
+            text="Save",
+            manager=self.ui_manager,
+            container=self.ui_panel.get_container()
+        )
 
     def initialize_simulation(self):
         """Rebuild simulation arrays from current atom_params."""
@@ -307,26 +359,18 @@ void resolve_collisions_kernel(float* positions, float* velocities,
 
     def update_simulation_from_ui(self):
         """Read UI values and update parameters, then reinitialize simulation."""
-        # Get FPS and gravity values
         try:
             new_fps = int(self.ui_elements["fps"].get_text())
             new_gravity = float(self.ui_elements["gravity"].get_text())
             self.fps = new_fps
-            
-            # Update gravity and recalculate the force matrix
             old_gravity = self.gravity
             self.gravity = new_gravity
-            
-            # Scale the force matrix to maintain the same relative values but with new gravity
-            if old_gravity != 0:  # Avoid division by zero
+            if old_gravity != 0:
                 scale_factor = new_gravity / old_gravity
                 self.force_params = self.force_params * scale_factor
             else:
-                # If old gravity was 0, just apply the new gravity directly
                 self.force_params = INITIAL_FORCE_MATRIX * new_gravity
-                
         except ValueError:
-            # If there's an error parsing, keep the current values
             pass
 
         try:
@@ -352,24 +396,28 @@ void resolve_collisions_kernel(float* positions, float* velocities,
                     new_force[i, j] = self.force_params[i, j]
         
         self.force_params = new_force
-        self.force_matrix = cp.array((self.force_params * self.gravity).flatten())  # Apply gravity here
+        self.force_matrix = cp.array((self.force_params * self.gravity).flatten())
         self.initialize_simulation()
 
     def update(self):
         threads_per_block = 256
         blocks_per_grid = (self.num_particles + threads_per_block - 1) // threads_per_block
         
-        self.compute_forces_kernel((blocks_per_grid,), (threads_per_block,),
-                                   (self.positions, self.velocities, self.types,
-                                    self.force_matrix,
-                                    np.int32(self.num_particles), np.int32(NUM_TYPES),
-                                    np.float32(self.interaction_radius)))
+        self.compute_forces_kernel(
+            (blocks_per_grid,), (threads_per_block,),
+            (self.positions, self.velocities, self.types,
+             self.force_matrix,
+             np.int32(self.num_particles), np.int32(NUM_TYPES),
+             np.float32(self.interaction_radius))
+        )
         
         self.positions += self.velocities
         
-        self.resolve_collisions_kernel((blocks_per_grid,), (threads_per_block,),
-                                       (self.positions, self.velocities,
-                                        np.int32(self.num_particles), self.radii))
+        self.resolve_collisions_kernel(
+            (blocks_per_grid,), (threads_per_block,),
+            (self.positions, self.velocities,
+             np.int32(self.num_particles), self.radii)
+        )
         
         bounds = cp.array([PLAYGROUND_WIDTH, Y_SIZE], dtype=cp.float32)
         self.positions = cp.clip(self.positions, 0, bounds)
@@ -377,7 +425,6 @@ void resolve_collisions_kernel(float* positions, float* velocities,
         self.velocities[mask] *= -1
 
     def draw(self):
-        # Draw simulation in the PLAYGROUND area.
         for pos, t in zip(cp.asnumpy(self.positions), cp.asnumpy(self.types)):
             r = self.atom_params[t]["radius"]
             pygame.draw.circle(self.window, self.atom_params[t]["color"], pos.astype(int), int(r))
@@ -396,24 +443,30 @@ void resolve_collisions_kernel(float* positions, float* velocities,
                     if event.ui_element == self.update_button:
                         self.update_simulation_from_ui()
                     elif event.ui_element == self.random_button:
-                        # Randomize the force matrix and update the UI text entries.
                         self.force_params = np.random.rand(NUM_TYPES, NUM_TYPES) * 2 - 1
                         self.force_matrix = cp.array((self.force_params * self.gravity).flatten())
                         for i in range(NUM_TYPES):
                             for j in range(NUM_TYPES):
                                 self.ui_elements[i]["forces"][j].set_text(str(self.force_params[i][j]))
                     elif event.ui_element == self.save_button:
-                        # Save the current force matrix to a uniquely named JSON file.
-                        filename = "force_matrix_" + str(time.time()).replace('.', '_') + ".json"
-                        with open(filename, "w") as f:
+                        file_name_input = self.ui_elements["filename"].get_text().strip()
+                        if not file_name_input:
+                            file_name_input = "Unknown"
+                        if not file_name_input.endswith(".json"):
+                            file_name_input += ".json"
+                        dirname = 'matrix'
+                        dirpath = os.path.join(os.getcwd(), dirname)
+                        if not os.path.exists(dirpath):
+                            os.makedirs(dirpath)
+                        full_path = os.path.join(dirpath, file_name_input)
+                        with open(full_path, "w") as f:
                             json.dump(self.force_params.tolist(), f)
-                        print("Saved force matrix to", filename)
+                        print("Saved force matrix to", full_path)
             
             time_delta = clock.tick(self.fps) / 1000.0
             self.ui_manager.update(time_delta)
             self.update()
             
-            # Draw everything only once per frame.
             self.window.fill((0, 0, 0))
             self.draw()
             self.ui_manager.draw_ui(self.window)
