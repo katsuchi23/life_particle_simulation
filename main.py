@@ -3,6 +3,8 @@ import numpy as np
 import cupy as cp
 import math
 import pygame_gui
+import time
+import json
 
 # -- SIMULATION PARAMETERS --
 PLAYGROUND_WIDTH = 1000
@@ -11,7 +13,7 @@ CONTROL_WIDTH = 200
 TOTAL_WIDTH = PLAYGROUND_WIDTH + CONTROL_WIDTH
 DRAW_INTERVAL = 1       # Draw every simulation step
 FPS = 60               # Frames per second
-GRAVITY = 0.05          # Gravity constant
+GRAVITY = 0.5          # Gravity constant
 
 # --- Initial Settings for Atom Types ---
 # For each type, we store:
@@ -21,19 +23,15 @@ GRAVITY = 0.05          # Gravity constant
 #   - radius: drawing radius (and collision diameter = 2*radius).
 INITIAL_ATOM_SETTINGS = [
     {"name": "red",    "color": (255, 0, 0),   "num_particles": 5000, "radius": 3.0},
-    {"name": "white", "color": (255, 255, 255), "num_particles": 2000, "radius": 3.0},
-    {"name": "blue", "color": 'blue', "num_particles": 0, "radius": 3.0}
+    {"name": "white",  "color": (255, 255, 255), "num_particles": 1000, "radius": 3.0},
+    {"name": "blue",   "color": 'blue',          "num_particles": 1000, "radius": 3.0},
+    {"name": "green",  "color": 'green',         "num_particles": 1000, "radius": 3.0},
 ]
 NUM_TYPES = len(INITIAL_ATOM_SETTINGS)
 
 # --- Initial Force Matrix ---
 # This is a NUM_TYPES x NUM_TYPES matrix.
-INITIAL_FORCE_MATRIX = np.array([
-    [-0.1,  1, -1],
-    [-1,  1, -1],
-    [-1,  1, 1],
-], dtype=np.float32)
-
+INITIAL_FORCE_MATRIX = np.random.rand(len(INITIAL_ATOM_SETTINGS), len(INITIAL_ATOM_SETTINGS)) * 2 - 1
 
 class GPUParticleSimulation:
     # ---------------------------
@@ -162,10 +160,10 @@ void resolve_collisions_kernel(float* positions, float* velocities,
         force_cell_height = (element_height + padding) * NUM_TYPES
         force_matrix_height = force_title_height + (force_row_height + force_cell_height) * NUM_TYPES + padding
         
-        # Button height
+        # Button height (now we have three buttons)
         button_height = 40 + padding * 2
         
-        total_height += simulation_params_height + force_matrix_height + button_height
+        total_height += simulation_params_height + force_matrix_height + 3 * button_height
         
         # Make sure there's enough content to force scrolling
         scrollable_height = max(total_height, Y_SIZE - 20)
@@ -185,9 +183,9 @@ void resolve_collisions_kernel(float* positions, float* velocities,
         
         # Add simulation parameters section (FPS and Gravity)
         sim_title = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, container_width - 20, element_height),
-                                              text="Simulation Settings:",
-                                              manager=self.ui_manager,
-                                              container=self.ui_panel.get_container())
+                                                  text="Simulation Settings:",
+                                                  manager=self.ui_manager,
+                                                  container=self.ui_panel.get_container())
         y_offset += element_height + padding
         
         fps_label = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(10, y_offset, 60, element_height),
@@ -270,10 +268,23 @@ void resolve_collisions_kernel(float* positions, float* velocities,
                 y_offset += element_height + padding
             y_offset += padding
 
+        # Add three buttons: Update Simulation, Random Force Matrix, and Save Force Matrix.
         self.update_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
-                                                            text="Update Simulation",
+                                                            text="Refresh",
                                                             manager=self.ui_manager,
                                                             container=self.ui_panel.get_container())
+        y_offset += 50
+        
+        self.random_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
+                                                            text="Randomize",
+                                                            manager=self.ui_manager,
+                                                            container=self.ui_panel.get_container())
+        y_offset += 50
+        
+        self.save_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(10, y_offset, container_width - 20, 40),
+                                                          text="Save",
+                                                          manager=self.ui_manager,
+                                                          container=self.ui_panel.get_container())
 
     def initialize_simulation(self):
         """Rebuild simulation arrays from current atom_params."""
@@ -373,7 +384,6 @@ void resolve_collisions_kernel(float* positions, float* velocities,
 
     def run(self):
         running = True
-        simulation_steps = 0
         clock = pygame.time.Clock()
         
         while running:
@@ -381,14 +391,27 @@ void resolve_collisions_kernel(float* positions, float* velocities,
                 if event.type == pygame.QUIT:
                     running = False
                 self.ui_manager.process_events(event)
+                
                 if event.type == pygame_gui.UI_BUTTON_PRESSED:
                     if event.ui_element == self.update_button:
                         self.update_simulation_from_ui()
+                    elif event.ui_element == self.random_button:
+                        # Randomize the force matrix and update the UI text entries.
+                        self.force_params = np.random.rand(NUM_TYPES, NUM_TYPES) * 2 - 1
+                        self.force_matrix = cp.array((self.force_params * self.gravity).flatten())
+                        for i in range(NUM_TYPES):
+                            for j in range(NUM_TYPES):
+                                self.ui_elements[i]["forces"][j].set_text(str(self.force_params[i][j]))
+                    elif event.ui_element == self.save_button:
+                        # Save the current force matrix to a uniquely named JSON file.
+                        filename = "force_matrix_" + str(time.time()).replace('.', '_') + ".json"
+                        with open(filename, "w") as f:
+                            json.dump(self.force_params.tolist(), f)
+                        print("Saved force matrix to", filename)
             
             time_delta = clock.tick(self.fps) / 1000.0
             self.ui_manager.update(time_delta)
             self.update()
-            simulation_steps += 1
             
             # Draw everything only once per frame.
             self.window.fill((0, 0, 0))
